@@ -20,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -39,19 +39,29 @@ jobs:
           rclone version
 
       - name: Write temporary rclone config from secret
+        # 注意：環境變數不能叫 RCLONE_CONFIG，那是 rclone 保留的「config 檔路徑」變數，
+        # 會導致 rclone 把 secret 內容當成檔名並印在 log 裡。
         env:
-          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_CONF_CONTENT: ${{ secrets.RCLONE_CONFIG }}
         run: |
           set -euo pipefail
-          if [ -z "$RCLONE_CONFIG" ]; then
+          if [ -z "$RCLONE_CONF_CONTENT" ]; then
             echo "錯誤：RCLONE_CONFIG secret 為空" >&2
             exit 1
           fi
           mkdir -p ~/.config/rclone
-          printf '%s\n' "$RCLONE_CONFIG" > ~/.config/rclone/rclone.conf
+          printf '%s\n' "$RCLONE_CONF_CONTENT" > ~/.config/rclone/rclone.conf
           chmod 600 ~/.config/rclone/rclone.conf
+          unset RCLONE_CONF_CONTENT
+          # 只做結構檢查，不印任何內容
+          if ! grep -q '^\[gdrive\]' ~/.config/rclone/rclone.conf; then
+            echo "錯誤：rclone config 中找不到 [gdrive] 區段，請檢查 secret 內容" >&2
+            exit 1
+          fi
+          echo "rclone config written ($(wc -l < ~/.config/rclone/rclone.conf) lines)"
           echo "rclone remotes:"
-          rclone listremotes
+          rclone listremotes 2>/dev/null | grep -E '^[A-Za-z0-9_-]+:$' \
+            || { echo "錯誤：rclone 無法讀取 config 或沒有任何 remote" >&2; exit 1; }
 
       - name: Crawl passenger TXT
         run: python crawlers/crawler_taoyuan_passenger.py
