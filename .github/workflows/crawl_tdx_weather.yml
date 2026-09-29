@@ -1,0 +1,67 @@
+name: Crawl TDX Weather METAR (TPE)
+
+on:
+  schedule:
+    # 每 2 小時第 47 分（UTC），避開整點高峰。台北時間 = UTC+8。
+    - cron: "47 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crawl-tdx-weather
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install rclone
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+          rclone version
+
+      - name: Write temporary rclone config from secret
+        env:
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RCLONE_CONFIG" ]; then
+            echo "錯誤：RCLONE_CONFIG secret 為空" >&2
+            exit 1
+          fi
+          mkdir -p ~/.config/rclone
+          printf '%s\n' "$RCLONE_CONFIG" > ~/.config/rclone/rclone.conf
+          chmod 600 ~/.config/rclone/rclone.conf
+          echo "rclone remotes:"
+          rclone listremotes
+
+      - name: Crawl TDX METAR weather
+        env:
+          TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
+          TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
+        run: python crawlers/crawler_tdx_weather.py
+
+      - name: Upload weather JSON to Google Drive
+        run: bash scripts/upload_to_gdrive.sh weather
+
+      - name: Remove temporary rclone config
+        if: always()
+        run: rm -f ~/.config/rclone/rclone.conf

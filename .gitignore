@@ -1,0 +1,27 @@
+# Raw data 只存 Google Drive，不進 GitHub
+data/raw/
+
+# 環境變數 / credential
+.env
+.env.*
+rclone.conf
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 雜項
+*.tmp
+*.log
+
+# 參考文件（僅保留本機，不進 repo）
+航班資訊檔檔案格式.pdf
